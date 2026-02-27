@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, Pause, SkipForward, Music, CheckCircle2, XCircle, Trophy, Share2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DAILY_SONGS, Song } from '../songs';
 
@@ -10,7 +10,7 @@ interface MusicGuessProps {
 }
 
 const MAX_GUESSES = 6;
-const UNLOCK_TIMES = [5, 10, 20, 35, 45, 60]; // Seconds unlocked per attempt
+const UNLOCK_TIMES = [5, 10, 20, 35, 45, 60]; 
 
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
@@ -19,10 +19,13 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [currentGuess, setCurrentGuess] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [player, setPlayer] = useState<any>(null);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [streak, setStreak] = useState(0);
   const [dailyCompleted, setDailyCompleted] = useState(false);
 
+  const playerRef = useRef<any>(null);
+  const intervalRef = useRef<any>(null);
+  
   const song = DAILY_SONGS[currentSongIndex % DAILY_SONGS.length];
 
   useEffect(() => {
@@ -30,38 +33,54 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     if (savedStreak) setStreak(parseInt(savedStreak));
   }, []);
 
+  // Cleanup intervals on unmount
   useEffect(() => {
-    let interval: any;
-    if (isPlaying && player) {
-      interval = setInterval(() => {
-        const time = player.getCurrentTime() - song.startAt;
-        setCurrentTime(time);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const onPlayerReady: YouTubeProps['onReady'] = (event) => {
+    playerRef.current = event.target;
+    setIsPlayerReady(true);
+    // Mute and play/pause quickly to pre-buffer
+    playerRef.current.mute();
+    playerRef.current.playVideo();
+    setTimeout(() => {
+      playerRef.current.pauseVideo();
+      playerRef.current.unMute();
+      playerRef.current.seekTo(song.startAt);
+    }, 500);
+  };
+
+  const playMusic = () => {
+    if (playerRef.current && isPlayerReady) {
+      playerRef.current.seekTo(song.startAt);
+      playerRef.current.playVideo();
+      setIsPlaying(true);
+
+      // Start the monitoring interval
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => {
+        const time = playerRef.current.getCurrentTime() - song.startAt;
+        setCurrentTime(Math.max(0, time));
         
         if (time >= UNLOCK_TIMES[attempts.length]) {
           pauseMusic();
         }
-      }, 100);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying, player, attempts.length, song.startAt]);
-
-  const onPlayerReady: YouTubeProps['onReady'] = (event) => {
-    setPlayer(event.target);
-  };
-
-  const playMusic = () => {
-    if (player) {
-      player.seekTo(song.startAt);
-      player.playVideo();
-      setIsPlaying(true);
+      }, 50);
     }
   };
 
   const pauseMusic = () => {
-    if (player) {
-      player.pauseVideo();
+    if (playerRef.current) {
+      playerRef.current.pauseVideo();
       setIsPlaying(false);
       setCurrentTime(0);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     }
   };
 
@@ -89,12 +108,14 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     setStreak(newStreak);
     localStorage.setItem('music-streak', newStreak.toString());
     triggerConfetti();
+    pauseMusic();
   };
 
   const handleLoss = () => {
     setGameState('result');
     setStreak(0);
     localStorage.setItem('music-streak', '0');
+    pauseMusic();
   };
 
   const triggerConfetti = () => {
@@ -113,17 +134,15 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       setCurrentSongIndex(prev => prev + 1);
       setAttempts([]);
       setGameState('playing');
+      setIsPlayerReady(false); // Reset ready state for next song
+      setCurrentTime(0);
       setDailyCompleted(false);
     }
   };
 
   const shareResults = () => {
     const icons = attempts.map((_, i) => i === attempts.length - 1 && gameState === 'result' && streak > 0 ? '🟩' : '🟥').join('');
-    const text = `🎧 REWIND TUNES
-Song ${currentSongIndex + 1}/3
-Streak: ${streak}
-${icons}
-Play now!`;
+    const text = `🎧 REWIND TUNES\nSong ${currentSongIndex + 1}/3\nStreak: ${streak}\n${icons}\nPlay now!`;
     if (navigator.share) {
       navigator.share({ text }).catch(console.error);
     } else {
@@ -152,9 +171,14 @@ Play now!`;
       {/* Hidden YouTube Player */}
       <div style={{ display: 'none' }}>
         <YouTube 
+          key={song.id}
           videoId={song.youtubeId} 
-          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1 } }} 
+          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1 } }} 
           onReady={onPlayerReady} 
+          onStateChange={(e) => {
+            // If video ends or errors, handle it
+            if (e.data === 0) pauseMusic();
+          }}
         />
       </div>
 
@@ -162,12 +186,25 @@ Play now!`;
       <div style={{ background: '#1a0b2e', border: '2px solid #3d2b54', borderRadius: '16px', padding: '30px', marginBottom: '30px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
           <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: isPlayerReady ? 1.1 : 1 }}
+            whileTap={{ scale: isPlayerReady ? 0.9 : 1 }}
             onClick={isPlaying ? pauseMusic : playMusic}
-            style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--neon-cyan)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 0 20px rgba(0, 255, 255, 0.4)' }}
+            disabled={!isPlayerReady}
+            style={{ 
+              width: '80px', height: '80px', borderRadius: '50%', 
+              background: isPlayerReady ? 'var(--neon-cyan)' : '#3d2b54', 
+              border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+              cursor: isPlayerReady ? 'pointer' : 'wait', 
+              boxShadow: isPlayerReady ? '0 0 20px rgba(0, 255, 255, 0.4)' : 'none' 
+            }}
           >
-            {isPlaying ? <Pause size={40} color="#0d0221" /> : <Play size={40} color="#0d0221" style={{ marginLeft: '5px' }} />}
+            {!isPlayerReady ? (
+              <Loader2 size={40} color="#888" className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause size={40} color="#0d0221" />
+            ) : (
+              <Play size={40} color="#0d0221" style={{ marginLeft: '5px' }} />
+            )}
           </motion.button>
         </div>
 
