@@ -10,7 +10,7 @@ interface MusicGuessProps {
 }
 
 const MAX_GUESSES = 6;
-const UNLOCK_TIMES = [1, 2, 4, 7, 11, 20]; // Seconds unlocked per attempt
+const UNLOCK_TIMES = [3, 6, 10, 15, 20, 30]; // Seconds unlocked per attempt
 
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
@@ -176,19 +176,19 @@ Play now!`;
             <motion.div 
                 style={{ 
                     position: 'absolute', height: '100%', background: 'var(--neon-cyan)', borderRadius: '6px', 
-                    width: `${(currentTime / 20) * 100}%`,
+                    width: `${(currentTime / 30) * 100}%`,
                     boxShadow: '0 0 10px var(--neon-cyan)'
                 }} 
             />
             {/* Markers for unlocked segments */}
             {UNLOCK_TIMES.map((time, i) => (
-                <div key={i} style={{ position: 'absolute', left: `${(time / 20) * 100}%`, top: 0, bottom: 0, width: '2px', background: i < attempts.length ? 'transparent' : '#3d2b54' }} />
+                <div key={i} style={{ position: 'absolute', left: `${(time / 30) * 100}%`, top: 0, bottom: 0, width: '2px', background: i < attempts.length ? 'transparent' : '#3d2b54' }} />
             ))}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.8rem' }} className="retro-text">
             <span>0s</span>
-            <span>{UNLOCK_TIMES[attempts.length] || 20}s UNLOCKED</span>
-            <span>20s</span>
+            <span>{UNLOCK_TIMES[attempts.length] || 30}s UNLOCKED</span>
+            <span>30s</span>
         </div>
       </div>
 
