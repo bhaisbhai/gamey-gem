@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/puzzles.ts"],"version":"5.6.3"}
+{"root":["./src/App.tsx","./src/main.tsx","./src/puzzles.ts","./src/songs.ts","./src/components/ArcadeHome.tsx","./src/games/MusicGuess.tsx","./src/games/NeonDodge.tsx","./src/games/Rewind90s.tsx"],"version":"5.6.3"}
