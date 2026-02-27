@@ -10,7 +10,7 @@ interface MusicGuessProps {
 }
 
 const MAX_GUESSES = 6;
-const UNLOCK_TIMES = [3, 6, 10, 15, 20, 30]; // Seconds unlocked per attempt
+const UNLOCK_TIMES = [5, 10, 20, 35, 45, 60]; // Seconds unlocked per attempt
 
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [currentSongIndex, setCurrentSongIndex] = useState(0);
@@ -176,21 +176,35 @@ Play now!`;
             <motion.div 
                 style={{ 
                     position: 'absolute', height: '100%', background: 'var(--neon-cyan)', borderRadius: '6px', 
-                    width: `${(currentTime / 30) * 100}%`,
+                    width: `${(currentTime / 60) * 100}%`,
                     boxShadow: '0 0 10px var(--neon-cyan)'
                 }} 
             />
             {/* Markers for unlocked segments */}
             {UNLOCK_TIMES.map((time, i) => (
-                <div key={i} style={{ position: 'absolute', left: `${(time / 30) * 100}%`, top: 0, bottom: 0, width: '2px', background: i < attempts.length ? 'transparent' : '#3d2b54' }} />
+                <div key={i} style={{ position: 'absolute', left: `${(time / 60) * 100}%`, top: 0, bottom: 0, width: '2px', background: i < attempts.length ? 'transparent' : '#3d2b54' }} />
             ))}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.8rem' }} className="retro-text">
             <span>0s</span>
-            <span>{UNLOCK_TIMES[attempts.length] || 30}s UNLOCKED</span>
-            <span>30s</span>
+            <span>{UNLOCK_TIMES[attempts.length] || 60}s UNLOCKED</span>
+            <span>60s</span>
         </div>
       </div>
+
+      {/* Emoji Hint */}
+      <AnimatePresence>
+        {attempts.length >= 2 && gameState === 'playing' && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            style={{ marginBottom: '20px', fontSize: '2rem', letterSpacing: '8px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '12px', border: '1px dashed var(--neon-yellow)' }}
+          >
+            <div style={{ fontSize: '0.7rem', color: 'var(--neon-yellow)', marginBottom: '5px' }} className="retro-text">EMOJI HINT UNLOCKED</div>
+            {song.emojis}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Attempts Grid */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '30px' }}>
@@ -223,6 +237,7 @@ Play now!`;
       ) : (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
            <div style={{ background: 'rgba(0,255,255,0.1)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--neon-cyan)' }}>
+              <div style={{ fontSize: '1.5rem', marginBottom: '10px' }}>{song.emojis}</div>
               <div className="retro-text" style={{ fontSize: '0.9rem', color: 'var(--neon-cyan)', marginBottom: '5px' }}>THE SONG WAS</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>{song.title}</div>
               <div style={{ color: '#aaa' }}>{song.artist}</div>
