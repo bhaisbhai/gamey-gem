@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock, SkipForward } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DAILY_SONGS, Song } from '../songs';
 
@@ -10,11 +10,11 @@ interface MusicGuessProps {
 }
 
 const MAX_GUESSES = 6;
-const UNLOCK_TIMES = [3, 7, 15, 30, 45, 60]; 
+const UNLOCK_TIMES = [5, 10, 20, 35, 50, 60]; 
 
 const getDailySeed = () => {
   const now = new Date();
-  return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 };
 
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
@@ -25,28 +25,32 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [streak, setStreak] = useState(0);
-  const [hasPlayedToday, setHasPlayedToday] = useState(false);
 
   const playerRef = useRef<any>(null);
   const intervalRef = useRef<any>(null);
   
-  // Daily selection based on date seed
   const daySeed = getDailySeed();
-  const songIndex = Math.abs(daySeed.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % DAILY_SONGS.length;
+  // deterministic song choice based on date
+  const dateNum = parseInt(daySeed.replace(/-/g, ''));
+  const songIndex = dateNum % DAILY_SONGS.length;
   const song = DAILY_SONGS[songIndex];
 
+  // Load and check daily status
   useEffect(() => {
-    // Load state
+    console.log("Loading game for seed:", daySeed);
     const savedStreak = localStorage.getItem('music-streak') || '0';
     setStreak(parseInt(savedStreak));
 
-    const lastPlayed = localStorage.getItem('music-last-played');
-    if (lastPlayed === daySeed) {
+    const lastPlayedSeed = localStorage.getItem('music-last-played');
+    if (lastPlayedSeed === daySeed) {
       const savedAttempts = JSON.parse(localStorage.getItem('music-daily-attempts') || '[]');
-      const savedState = localStorage.getItem('music-daily-state') as any;
+      const savedState = localStorage.getItem('music-daily-state') as 'playing' | 'result';
       setAttempts(savedAttempts);
-      setGameState(savedState || 'result');
-      setHasPlayedToday(true);
+      setGameState(savedState || 'playing');
+      console.log("Resumed today's game. State:", savedState, "Attempts:", savedAttempts.length);
+    } else {
+        // New day! Don't reset streak here, handle it in game completion
+        console.log("Starting fresh game for a new day.");
     }
   }, [daySeed]);
 
@@ -57,6 +61,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   }, []);
 
   const onPlayerReady: YouTubeProps['onReady'] = (event) => {
+    console.log("YouTube Player Ready");
     playerRef.current = event.target;
     setIsPlayerReady(true);
     playerRef.current.seekTo(song.startAt);
@@ -64,6 +69,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
   const playMusic = () => {
     if (playerRef.current && isPlayerReady) {
+      console.log("Starting playback from:", song.startAt, "for", UNLOCK_TIMES[attempts.length], "seconds");
       playerRef.current.seekTo(song.startAt);
       playerRef.current.playVideo();
       setIsPlaying(true);
@@ -71,13 +77,12 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(() => {
         const playerTime = playerRef.current.getCurrentTime();
-        const elapsed = playerTime - song.startAt;
+        const elapsed = Math.max(0, playerTime - song.startAt);
         
-        // Use elapsed time for progress bar
-        setCurrentTime(Math.max(0, elapsed));
+        setCurrentTime(elapsed);
         
-        // Stop if we exceed unlocked time
         if (elapsed >= UNLOCK_TIMES[attempts.length]) {
+          console.log("Clip limit reached:", UNLOCK_TIMES[attempts.length], "Stopping.");
           pauseMusic();
         }
       }, 50);
@@ -88,7 +93,10 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     if (playerRef.current) {
       playerRef.current.pauseVideo();
       setIsPlaying(false);
-      setCurrentTime(0);
+      // Wait a tiny bit before resetting progress bar to let user see it full
+      setTimeout(() => {
+          if (!isPlaying) setCurrentTime(0);
+      }, 500);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -96,31 +104,34 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     }
   };
 
-  const handleGuess = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentGuess.trim() || gameState !== 'playing' || hasPlayedToday) return;
+  const handleGuess = (e?: React.FormEvent, isSkip = false) => {
+    if (e) e.preventDefault();
+    if (gameState !== 'playing') return;
 
-    const guess = currentGuess.toUpperCase().trim();
-    const isCorrect = guess === song.title.toUpperCase() || guess === song.artist.toUpperCase();
+    const guess = isSkip ? "SKIPPED" : currentGuess.toUpperCase().trim();
+    if (!isSkip && !guess) return;
 
-    const newAttempts = [...attempts, currentGuess];
+    const isCorrect = !isSkip && (guess === song.title.toUpperCase() || guess === song.artist.toUpperCase());
+    const newAttempts = [...attempts, isSkip ? "" : currentGuess];
+    
     setAttempts(newAttempts);
     setCurrentGuess('');
 
-    // Save progress
-    localStorage.setItem('music-daily-attempts', JSON.stringify(newAttempts));
+    // Persistence
     localStorage.setItem('music-last-played', daySeed);
+    localStorage.setItem('music-daily-attempts', JSON.stringify(newAttempts));
 
     if (isCorrect) {
       handleWin(newAttempts);
     } else if (newAttempts.length >= MAX_GUESSES) {
       handleLoss(newAttempts);
+    } else {
+        localStorage.setItem('music-daily-state', 'playing');
     }
   };
 
   const handleWin = (finalAttempts: string[]) => {
     setGameState('result');
-    setHasPlayedToday(true);
     localStorage.setItem('music-daily-state', 'result');
     const newStreak = streak + 1;
     setStreak(newStreak);
@@ -131,7 +142,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
   const handleLoss = (finalAttempts: string[]) => {
     setGameState('result');
-    setHasPlayedToday(true);
     localStorage.setItem('music-daily-state', 'result');
     setStreak(0);
     localStorage.setItem('music-streak', '0');
@@ -148,9 +158,9 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   };
 
   const shareResults = () => {
-    const isWin = attempts.some(a => a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase());
-    const scoreText = isWin ? `${attempts.length}/${MAX_GUESSES}` : 'X/6';
-    const icons = attempts.map((_, i) => (i === attempts.length - 1 && isWin) ? '🟩' : '🟥').join('');
+    const isWin = attempts.some(a => a && (a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase()));
+    const scoreText = isWin ? `${attempts.filter(a => a).length}/${MAX_GUESSES}` : 'X/6';
+    const icons = attempts.map(a => (a && (a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase())) ? '🟩' : '🟥').join('');
     const text = `🎧 REWIND TUNES\nDaily Song\nScore: ${scoreText}\nStreak: ${streak}\n${icons}\nPlay now!`;
     
     if (navigator.share) {
@@ -162,7 +172,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', textAlign: 'center' }}>
+    <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', textAlign: 'center', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
        <button 
         onClick={onBack}
         style={{ position: 'absolute', top: '20px', left: '20px', background: 'rgba(255,255,255,0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '8px', borderRadius: '50%', cursor: 'pointer', zIndex: 100 }}
@@ -198,7 +208,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
             whileHover={{ scale: isPlayerReady ? 1.1 : 1 }}
             whileTap={{ scale: isPlayerReady ? 0.9 : 1 }}
             onClick={isPlaying ? pauseMusic : playMusic}
-            disabled={!isPlayerReady || (hasPlayedToday && gameState === 'playing')}
+            disabled={!isPlayerReady}
             style={{ 
               width: '80px', height: '80px', borderRadius: '50%', 
               background: isPlayerReady ? 'var(--neon-cyan)' : '#3d2b54', 
@@ -256,10 +266,10 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '30px' }}>
         {[...Array(MAX_GUESSES)].map((_, i) => (
           <div key={i} style={{ height: '45px', border: '1px solid #3d2b54', borderRadius: '8px', display: 'flex', alignItems: 'center', padding: '0 15px', background: i < attempts.length ? 'rgba(255,255,255,0.05)' : 'transparent', color: i < attempts.length ? '#fff' : '#444' }}>
-            {attempts[i] ? (
+            {attempts[i] !== undefined ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attempts[i]}</span>
-                {i === attempts.length - 1 && gameState === 'result' && attempts.some(a => a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase()) ? <CheckCircle2 size={18} color="var(--key-correct)" /> : <XCircle size={18} color="#ff4444" />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attempts[i] || 'SKIPPED'}</span>
+                {(attempts[i] && (attempts[i].toUpperCase() === song.title.toUpperCase() || attempts[i].toUpperCase() === song.artist.toUpperCase())) ? <CheckCircle2 size={18} color="var(--key-correct)" /> : <XCircle size={18} color="#ff4444" />}
               </div>
             ) : (
               <span style={{ opacity: 0.3 }}>Attempt {i + 1}...</span>
@@ -270,19 +280,26 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
       {/* Input Area */}
       {gameState === 'playing' ? (
-        <form onSubmit={handleGuess} style={{ display: 'flex', gap: '10px' }}>
-          <input 
-            type="text" 
-            placeholder="Artist or Song Title..." 
-            value={currentGuess}
-            onChange={(e) => setCurrentGuess(e.target.value)}
-            disabled={hasPlayedToday}
-            style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '12px 15px', color: 'white', outline: 'none' }}
-          />
-          <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 20px' }} disabled={hasPlayedToday}>GUESS</button>
-        </form>
+        <div style={{ marginTop: 'auto', paddingBottom: '20px' }}>
+            <form onSubmit={handleGuess} style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <input 
+                    type="text" 
+                    placeholder="Artist or Song Title..." 
+                    value={currentGuess}
+                    onChange={(e) => setCurrentGuess(e.target.value)}
+                    style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '12px 15px', color: 'white', outline: 'none' }}
+                />
+                <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 20px' }}>GUESS</button>
+            </form>
+            <button 
+                onClick={() => handleGuess(undefined, true)}
+                style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #3d2b54', borderRadius: '8px', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer' }}
+            >
+                <SkipForward size={18} /> SKIP TO NEXT CLUE
+            </button>
+        </div>
       ) : (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ marginTop: 'auto', paddingBottom: '20px' }}>
            <div style={{ background: 'rgba(0,255,255,0.1)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--neon-cyan)' }}>
               <div style={{ fontSize: '1.5rem', marginBottom: '10px' }}>{song.emojis}</div>
               <div className="retro-text" style={{ fontSize: '0.9rem', color: 'var(--neon-cyan)', marginBottom: '5px' }}>TODAY'S SONG</div>

@@ -70,8 +70,8 @@ const ArcadeHome: React.FC<ArcadeHomeProps> = ({ onSelectGame }) => {
             <Music size={60} color="var(--neon-yellow)" />
           </div>
           <h2 className="retro-text" style={{ margin: 0, fontSize: '2rem' }}>REWIND TUNES</h2>
-          <p style={{ color: '#ccc', margin: 0 }}>Guess the hits. 3 songs, 20 seconds.</p>
-          <div className="btn-neon" style={{ pointerEvents: 'none', borderColor: 'var(--neon-yellow)', color: 'var(--neon-yellow)' }}>PLAY TRACKS</div>
+          <p style={{ color: '#ccc', margin: 0 }}>Guess the hits. One daily song. One chance.</p>
+          <div className="btn-neon" style={{ pointerEvents: 'none', borderColor: 'var(--neon-yellow)', color: 'var(--neon-yellow)' }}>DAILY TRACK</div>
         </motion.div>
 
         {/* Game 3: Neon Dodge */}
