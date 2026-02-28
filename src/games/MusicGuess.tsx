@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock, SkipForward } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock, SkipForward, Mic } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DAILY_SONGS, Song } from '../songs';
 
@@ -24,20 +24,18 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [streak, setStreak] = useState(0);
 
   const playerRef = useRef<any>(null);
   const intervalRef = useRef<any>(null);
   
   const daySeed = getDailySeed();
-  // deterministic song choice based on date
   const dateNum = parseInt(daySeed.replace(/-/g, ''));
   const songIndex = dateNum % DAILY_SONGS.length;
   const song = DAILY_SONGS[songIndex];
 
-  // Load and check daily status
   useEffect(() => {
-    console.log("Loading game for seed:", daySeed);
     const savedStreak = localStorage.getItem('music-streak') || '0';
     setStreak(parseInt(savedStreak));
 
@@ -47,10 +45,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       const savedState = localStorage.getItem('music-daily-state') as 'playing' | 'result';
       setAttempts(savedAttempts);
       setGameState(savedState || 'playing');
-      console.log("Resumed today's game. State:", savedState, "Attempts:", savedAttempts.length);
-    } else {
-        // New day! Don't reset streak here, handle it in game completion
-        console.log("Starting fresh game for a new day.");
     }
   }, [daySeed]);
 
@@ -61,7 +55,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   }, []);
 
   const onPlayerReady: YouTubeProps['onReady'] = (event) => {
-    console.log("YouTube Player Ready");
     playerRef.current = event.target;
     setIsPlayerReady(true);
     playerRef.current.seekTo(song.startAt);
@@ -69,7 +62,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
   const playMusic = () => {
     if (playerRef.current && isPlayerReady) {
-      console.log("Starting playback from:", song.startAt, "for", UNLOCK_TIMES[attempts.length], "seconds");
       playerRef.current.seekTo(song.startAt);
       playerRef.current.playVideo();
       setIsPlaying(true);
@@ -78,11 +70,8 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       intervalRef.current = setInterval(() => {
         const playerTime = playerRef.current.getCurrentTime();
         const elapsed = Math.max(0, playerTime - song.startAt);
-        
         setCurrentTime(elapsed);
-        
         if (elapsed >= UNLOCK_TIMES[attempts.length]) {
-          console.log("Clip limit reached:", UNLOCK_TIMES[attempts.length], "Stopping.");
           pauseMusic();
         }
       }, 50);
@@ -93,7 +82,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     if (playerRef.current) {
       playerRef.current.pauseVideo();
       setIsPlaying(false);
-      // Wait a tiny bit before resetting progress bar to let user see it full
       setTimeout(() => {
           if (!isPlaying) setCurrentTime(0);
       }, 500);
@@ -102,6 +90,28 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         intervalRef.current = null;
       }
     }
+  };
+
+  const startListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice input is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setCurrentGuess(transcript);
+    };
+
+    recognition.start();
   };
 
   const handleGuess = (e?: React.FormEvent, isSkip = false) => {
@@ -117,7 +127,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     setAttempts(newAttempts);
     setCurrentGuess('');
 
-    // Persistence
     localStorage.setItem('music-last-played', daySeed);
     localStorage.setItem('music-daily-attempts', JSON.stringify(newAttempts));
 
@@ -202,7 +211,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       </div>
 
       {/* Play Progress UI */}
-      <div style={{ background: '#1a0b2e', border: '2px solid #3d2b54', borderRadius: '16px', padding: '30px', marginBottom: '30px', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ background: '#1a0b2e', border: '2px solid #3d2b54', borderRadius: '16px', padding: '30px', marginBottom: '20px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
           <motion.button
             whileHover={{ scale: isPlayerReady ? 1.1 : 1 }}
@@ -248,6 +257,35 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         </div>
       </div>
 
+      {/* Input Area (Directly below player) */}
+      {gameState === 'playing' && (
+        <div style={{ marginBottom: '30px' }}>
+            <form onSubmit={handleGuess} style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                <input 
+                    type="text" 
+                    placeholder="Artist or Song Title..." 
+                    value={currentGuess}
+                    onChange={(e) => setCurrentGuess(e.target.value)}
+                    style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '12px 15px', color: 'white', outline: 'none' }}
+                />
+                <button 
+                    type="button" 
+                    onClick={startListening}
+                    style={{ background: isListening ? 'var(--neon-pink)' : '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '0 12px', color: 'white', cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                    <Mic size={20} className={isListening ? "animate-pulse" : ""} />
+                </button>
+                <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 15px', fontSize: '1rem' }}>GUESS</button>
+            </form>
+            <button 
+                onClick={() => handleGuess(undefined, true)}
+                style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #3d2b54', borderRadius: '8px', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer' }}
+            >
+                <SkipForward size={18} /> SKIP TO NEXT CLUE
+            </button>
+        </div>
+      )}
+
       {/* Emoji Hint */}
       <AnimatePresence>
         {attempts.length >= 2 && (
@@ -278,27 +316,8 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         ))}
       </div>
 
-      {/* Input Area */}
-      {gameState === 'playing' ? (
-        <div style={{ marginTop: 'auto', paddingBottom: '20px' }}>
-            <form onSubmit={handleGuess} style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <input 
-                    type="text" 
-                    placeholder="Artist or Song Title..." 
-                    value={currentGuess}
-                    onChange={(e) => setCurrentGuess(e.target.value)}
-                    style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '12px 15px', color: 'white', outline: 'none' }}
-                />
-                <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 20px' }}>GUESS</button>
-            </form>
-            <button 
-                onClick={() => handleGuess(undefined, true)}
-                style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #3d2b54', borderRadius: '8px', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer' }}
-            >
-                <SkipForward size={18} /> SKIP TO NEXT CLUE
-            </button>
-        </div>
-      ) : (
+      {/* Result Area */}
+      {gameState === 'result' && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ marginTop: 'auto', paddingBottom: '20px' }}>
            <div style={{ background: 'rgba(0,255,255,0.1)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--neon-cyan)' }}>
               <div style={{ fontSize: '1.5rem', marginBottom: '10px' }}>{song.emojis}</div>
