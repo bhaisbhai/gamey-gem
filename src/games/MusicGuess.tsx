@@ -57,12 +57,14 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const onPlayerReady: YouTubeProps['onReady'] = (event) => {
     playerRef.current = event.target;
     setIsPlayerReady(true);
-    playerRef.current.seekTo(song.startAt);
+    // Explicitly pause and seek to start position without playing
+    playerRef.current.pauseVideo();
+    // Do not seek here as it can trigger autoplay on some browsers
   };
 
   const playMusic = () => {
     if (playerRef.current && isPlayerReady) {
-      playerRef.current.seekTo(song.startAt);
+      playerRef.current.seekTo(song.startAt, true);
       playerRef.current.playVideo();
       setIsPlaying(true);
 
@@ -71,6 +73,8 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         const playerTime = playerRef.current.getCurrentTime();
         const elapsed = Math.max(0, playerTime - song.startAt);
         setCurrentTime(elapsed);
+        
+        // Use a small buffer to avoid abrupt stops on network lag
         if (elapsed >= UNLOCK_TIMES[attempts.length]) {
           pauseMusic();
         }
@@ -82,13 +86,15 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     if (playerRef.current) {
       playerRef.current.pauseVideo();
       setIsPlaying(false);
-      setTimeout(() => {
-          if (!isPlaying) setCurrentTime(0);
-      }, 500);
+      // Clear interval immediately
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      // Reset after a short delay for visual feedback
+      setTimeout(() => {
+          setCurrentTime(0);
+      }, 300);
     }
   };
 
@@ -202,9 +208,13 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         <YouTube 
           key={song.id}
           videoId={song.youtubeId} 
-          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1, autoplay: 0 } }} 
+          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1, autoplay: 0, rel: 0 } }} 
           onReady={onPlayerReady} 
           onStateChange={(e) => {
+            // Force sync if player starts playing unexpectedly
+            if (e.data === 1 && !isPlaying) {
+                pauseMusic();
+            }
             if (e.data === 0) pauseMusic();
           }}
         />
