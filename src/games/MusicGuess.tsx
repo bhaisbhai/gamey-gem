@@ -23,6 +23,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [attempts, setAttempts] = useState<string[]>([]);
   const [lives, setLives] = useState(MAX_LIVES);
   const [currentGuess, setCurrentGuess] = useState('');
+  const [revealedLetters, setRevealedLetters] = useState<Set<string>>(new Set([' ', '-', "'", '.', '&']));
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
@@ -46,9 +47,14 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       const savedAttempts = JSON.parse(localStorage.getItem('music-daily-attempts') || '[]');
       const savedLives = parseInt(localStorage.getItem('music-daily-lives') || MAX_LIVES.toString());
       const savedState = localStorage.getItem('music-daily-state') as 'playing' | 'result';
+      const savedLetters = JSON.parse(localStorage.getItem('music-daily-letters') || '[]');
+      
       setAttempts(savedAttempts);
       setLives(savedLives);
       setGameState(savedState || 'playing');
+      if (savedLetters.length > 0) {
+        setRevealedLetters(new Set([...Array.from(revealedLetters), ...savedLetters]));
+      }
     }
   }, [daySeed]);
 
@@ -130,17 +136,31 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     const newAttempts = [...attempts, isSkip ? "" : currentGuess];
     
     let newLives = lives;
-    if (!isSkip && !isCorrect) {
-      newLives = Math.max(0, lives - 1);
+    const newRevealed = new Set(revealedLetters);
+
+    if (!isSkip) {
+      // Reveal letters from guess that are in the song title or artist
+      const fullAnswer = (song.title + song.artist).toUpperCase();
+      guess.split('').forEach(char => {
+        if (fullAnswer.includes(char)) {
+          newRevealed.add(char);
+        }
+      });
+
+      if (!isCorrect) {
+        newLives = Math.max(0, lives - 1);
+      }
     }
 
     setAttempts(newAttempts);
     setLives(newLives);
+    setRevealedLetters(newRevealed);
     setCurrentGuess('');
 
     localStorage.setItem('music-last-played', daySeed);
     localStorage.setItem('music-daily-attempts', JSON.stringify(newAttempts));
     localStorage.setItem('music-daily-lives', newLives.toString());
+    localStorage.setItem('music-daily-letters', JSON.stringify(Array.from(newRevealed)));
 
     if (isCorrect) {
       handleWin(newAttempts);
@@ -157,6 +177,11 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     const newStreak = streak + 1;
     setStreak(newStreak);
     localStorage.setItem('music-streak', newStreak.toString());
+    
+    // Reveal everything
+    const allChars = (song.title + song.artist).toUpperCase().split('');
+    setRevealedLetters(new Set([...Array.from(revealedLetters), ...allChars]));
+    
     triggerConfetti();
     pauseMusic();
   };
@@ -166,6 +191,11 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     localStorage.setItem('music-daily-state', 'result');
     setStreak(0);
     localStorage.setItem('music-streak', '0');
+    
+    // Reveal everything
+    const allChars = (song.title + song.artist).toUpperCase().split('');
+    setRevealedLetters(new Set([...Array.from(revealedLetters), ...allChars]));
+    
     pauseMusic();
   };
 
@@ -192,6 +222,28 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     }
   };
 
+  const renderBlanks = (text: string) => {
+    return text.split('').map((char, i) => {
+      const isSpace = char === ' ';
+      const isRevealed = revealedLetters.has(char.toUpperCase()) || isSpace;
+      
+      return (
+        <span key={i} style={{ 
+          display: 'inline-block', 
+          width: isSpace ? '10px' : '20px',
+          margin: '0 2px',
+          borderBottom: isSpace ? 'none' : '2px solid var(--neon-cyan)',
+          fontSize: '1.2rem',
+          fontWeight: 'bold',
+          color: isRevealed ? 'white' : 'transparent',
+          textTransform: 'uppercase'
+        }}>
+          {isRevealed ? char : '_'}
+        </span>
+      );
+    });
+  };
+
   return (
     <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', textAlign: 'center', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
        <button 
@@ -201,7 +253,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         <ArrowLeft size={24} />
       </button>
 
-      <header style={{ marginBottom: '40px' }}>
+      <header style={{ marginBottom: '30px' }}>
         <h1 className="neon-text-cyan retro-text" style={{ fontSize: '2.5rem', marginBottom: '5px' }}>REWIND TUNES</h1>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '25px', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -217,6 +269,18 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
           <span className="retro-text" style={{ color: 'var(--neon-yellow)' }}>STREAK: {streak}</span>
         </div>
       </header>
+
+      {/* Hangman Display */}
+      <div style={{ marginBottom: '25px', padding: '15px', background: 'rgba(0,255,255,0.05)', borderRadius: '12px', border: '1px solid rgba(0,255,255,0.1)' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', marginBottom: '10px' }} className="retro-text">TITLE</div>
+          <div style={{ marginBottom: '15px', minHeight: '30px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {renderBlanks(song.title)}
+          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', marginBottom: '10px' }} className="retro-text">ARTIST</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {renderBlanks(song.artist)}
+          </div>
+      </div>
 
       {/* Hidden YouTube Player */}
       <div style={{ display: 'none' }}>
@@ -279,7 +343,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* Input Area (Directly below player) */}
+      {/* Input Area */}
       {gameState === 'playing' && (
         <div style={{ marginBottom: '30px' }}>
             <form onSubmit={handleGuess} style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
@@ -321,22 +385,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Attempts Grid */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '30px' }}>
-        {[...Array(MAX_GUESSES)].map((_, i) => (
-          <div key={i} style={{ height: '45px', border: '1px solid #3d2b54', borderRadius: '8px', display: 'flex', alignItems: 'center', padding: '0 15px', background: i < attempts.length ? 'rgba(255,255,255,0.05)' : 'transparent', color: i < attempts.length ? '#fff' : '#444' }}>
-            {attempts[i] !== undefined ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attempts[i] || 'SKIPPED'}</span>
-                {(attempts[i] && (attempts[i].toUpperCase() === song.title.toUpperCase() || attempts[i].toUpperCase() === song.artist.toUpperCase())) ? <CheckCircle2 size={18} color="var(--key-correct)" /> : <XCircle size={18} color="#ff4444" />}
-              </div>
-            ) : (
-              <span style={{ opacity: 0.3 }}>Attempt {i + 1}...</span>
-            )}
-          </div>
-        ))}
-      </div>
 
       {/* Result Area */}
       {gameState === 'result' && (
