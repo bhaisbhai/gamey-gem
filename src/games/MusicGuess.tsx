@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock, SkipForward, Mic } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock, SkipForward, Mic, Heart, HeartCrack } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DAILY_SONGS, Song } from '../songs';
 
@@ -10,6 +10,7 @@ interface MusicGuessProps {
 }
 
 const MAX_GUESSES = 6;
+const MAX_LIVES = 2;
 const UNLOCK_TIMES = [5, 10, 20, 35, 50, 60]; 
 
 const getDailySeed = () => {
@@ -20,6 +21,7 @@ const getDailySeed = () => {
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [gameState, setGameState] = useState<'playing' | 'result'>('playing');
   const [attempts, setAttempts] = useState<string[]>([]);
+  const [lives, setLives] = useState(MAX_LIVES);
   const [currentGuess, setCurrentGuess] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -42,8 +44,10 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     const lastPlayedSeed = localStorage.getItem('music-last-played');
     if (lastPlayedSeed === daySeed) {
       const savedAttempts = JSON.parse(localStorage.getItem('music-daily-attempts') || '[]');
+      const savedLives = parseInt(localStorage.getItem('music-daily-lives') || MAX_LIVES.toString());
       const savedState = localStorage.getItem('music-daily-state') as 'playing' | 'result';
       setAttempts(savedAttempts);
+      setLives(savedLives);
       setGameState(savedState || 'playing');
     }
   }, [daySeed]);
@@ -57,9 +61,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const onPlayerReady: YouTubeProps['onReady'] = (event) => {
     playerRef.current = event.target;
     setIsPlayerReady(true);
-    // Explicitly pause and seek to start position without playing
     playerRef.current.pauseVideo();
-    // Do not seek here as it can trigger autoplay on some browsers
   };
 
   const playMusic = () => {
@@ -74,7 +76,6 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         const elapsed = Math.max(0, playerTime - song.startAt);
         setCurrentTime(elapsed);
         
-        // Use a small buffer to avoid abrupt stops on network lag
         if (elapsed >= UNLOCK_TIMES[attempts.length]) {
           pauseMusic();
         }
@@ -86,12 +87,10 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     if (playerRef.current) {
       playerRef.current.pauseVideo();
       setIsPlaying(false);
-      // Clear interval immediately
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      // Reset after a short delay for visual feedback
       setTimeout(() => {
           setCurrentTime(0);
       }, 300);
@@ -130,15 +129,22 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     const isCorrect = !isSkip && (guess === song.title.toUpperCase() || guess === song.artist.toUpperCase());
     const newAttempts = [...attempts, isSkip ? "" : currentGuess];
     
+    let newLives = lives;
+    if (!isSkip && !isCorrect) {
+      newLives = Math.max(0, lives - 1);
+    }
+
     setAttempts(newAttempts);
+    setLives(newLives);
     setCurrentGuess('');
 
     localStorage.setItem('music-last-played', daySeed);
     localStorage.setItem('music-daily-attempts', JSON.stringify(newAttempts));
+    localStorage.setItem('music-daily-lives', newLives.toString());
 
     if (isCorrect) {
       handleWin(newAttempts);
-    } else if (newAttempts.length >= MAX_GUESSES) {
+    } else if (newLives === 0 || newAttempts.length >= MAX_GUESSES) {
       handleLoss(newAttempts);
     } else {
         localStorage.setItem('music-daily-state', 'playing');
@@ -197,8 +203,17 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
       <header style={{ marginBottom: '40px' }}>
         <h1 className="neon-text-cyan retro-text" style={{ fontSize: '2.5rem', marginBottom: '5px' }}>REWIND TUNES</h1>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
-          <span className="retro-text" style={{ color: 'var(--neon-pink)' }}>DAILY TRACK</span>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '25px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {[...Array(MAX_LIVES)].map((_, i) => (
+              <motion.div 
+                key={i}
+                animate={{ scale: i < lives ? 1 : 0.8, opacity: i < lives ? 1 : 0.3 }}
+              >
+                {i < lives ? <Heart size={24} color="var(--neon-pink)" fill="var(--neon-pink)" style={{ filter: 'drop-shadow(0 0 5px var(--neon-pink))' }} /> : <HeartCrack size={24} color="#4a3b5c" />}
+              </motion.div>
+            ))}
+          </div>
           <span className="retro-text" style={{ color: 'var(--neon-yellow)' }}>STREAK: {streak}</span>
         </div>
       </header>
@@ -211,10 +226,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
           opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1, autoplay: 0, rel: 0 } }} 
           onReady={onPlayerReady} 
           onStateChange={(e) => {
-            // Force sync if player starts playing unexpectedly
-            if (e.data === 1 && !isPlaying) {
-                pauseMusic();
-            }
+            if (e.data === 1 && !isPlaying) pauseMusic();
             if (e.data === 0) pauseMusic();
           }}
         />
