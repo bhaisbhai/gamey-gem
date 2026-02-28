@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music, CheckCircle2, XCircle, Trophy, Share2, Loader2, Clock } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { DAILY_SONGS, Song } from '../songs';
 
@@ -10,10 +10,14 @@ interface MusicGuessProps {
 }
 
 const MAX_GUESSES = 6;
-const UNLOCK_TIMES = [5, 10, 20, 35, 45, 60]; 
+const UNLOCK_TIMES = [3, 7, 15, 30, 45, 60]; 
+
+const getDailySeed = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+};
 
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
-  const [currentSongIndex, setCurrentSongIndex] = useState(0);
   const [gameState, setGameState] = useState<'playing' | 'result'>('playing');
   const [attempts, setAttempts] = useState<string[]>([]);
   const [currentGuess, setCurrentGuess] = useState('');
@@ -21,19 +25,31 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [streak, setStreak] = useState(0);
-  const [dailyCompleted, setDailyCompleted] = useState(false);
+  const [hasPlayedToday, setHasPlayedToday] = useState(false);
 
   const playerRef = useRef<any>(null);
   const intervalRef = useRef<any>(null);
   
-  const song = DAILY_SONGS[currentSongIndex % DAILY_SONGS.length];
+  // Daily selection based on date seed
+  const daySeed = getDailySeed();
+  const songIndex = Math.abs(daySeed.split('').reduce((a, b) => a + b.charCodeAt(0), 0)) % DAILY_SONGS.length;
+  const song = DAILY_SONGS[songIndex];
 
   useEffect(() => {
-    const savedStreak = localStorage.getItem('music-streak');
-    if (savedStreak) setStreak(parseInt(savedStreak));
-  }, []);
+    // Load state
+    const savedStreak = localStorage.getItem('music-streak') || '0';
+    setStreak(parseInt(savedStreak));
 
-  // Cleanup intervals on unmount
+    const lastPlayed = localStorage.getItem('music-last-played');
+    if (lastPlayed === daySeed) {
+      const savedAttempts = JSON.parse(localStorage.getItem('music-daily-attempts') || '[]');
+      const savedState = localStorage.getItem('music-daily-state') as any;
+      setAttempts(savedAttempts);
+      setGameState(savedState || 'result');
+      setHasPlayedToday(true);
+    }
+  }, [daySeed]);
+
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -43,14 +59,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const onPlayerReady: YouTubeProps['onReady'] = (event) => {
     playerRef.current = event.target;
     setIsPlayerReady(true);
-    // Mute and play/pause quickly to pre-buffer
-    playerRef.current.mute();
-    playerRef.current.playVideo();
-    setTimeout(() => {
-      playerRef.current.pauseVideo();
-      playerRef.current.unMute();
-      playerRef.current.seekTo(song.startAt);
-    }, 500);
+    playerRef.current.seekTo(song.startAt);
   };
 
   const playMusic = () => {
@@ -59,13 +68,16 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       playerRef.current.playVideo();
       setIsPlaying(true);
 
-      // Start the monitoring interval
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(() => {
-        const time = playerRef.current.getCurrentTime() - song.startAt;
-        setCurrentTime(Math.max(0, time));
+        const playerTime = playerRef.current.getCurrentTime();
+        const elapsed = playerTime - song.startAt;
         
-        if (time >= UNLOCK_TIMES[attempts.length]) {
+        // Use elapsed time for progress bar
+        setCurrentTime(Math.max(0, elapsed));
+        
+        // Stop if we exceed unlocked time
+        if (elapsed >= UNLOCK_TIMES[attempts.length]) {
           pauseMusic();
         }
       }, 50);
@@ -86,7 +98,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
   const handleGuess = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentGuess.trim() || gameState !== 'playing') return;
+    if (!currentGuess.trim() || gameState !== 'playing' || hasPlayedToday) return;
 
     const guess = currentGuess.toUpperCase().trim();
     const isCorrect = guess === song.title.toUpperCase() || guess === song.artist.toUpperCase();
@@ -95,15 +107,21 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     setAttempts(newAttempts);
     setCurrentGuess('');
 
+    // Save progress
+    localStorage.setItem('music-daily-attempts', JSON.stringify(newAttempts));
+    localStorage.setItem('music-last-played', daySeed);
+
     if (isCorrect) {
-      handleWin();
+      handleWin(newAttempts);
     } else if (newAttempts.length >= MAX_GUESSES) {
-      handleLoss();
+      handleLoss(newAttempts);
     }
   };
 
-  const handleWin = () => {
+  const handleWin = (finalAttempts: string[]) => {
     setGameState('result');
+    setHasPlayedToday(true);
+    localStorage.setItem('music-daily-state', 'result');
     const newStreak = streak + 1;
     setStreak(newStreak);
     localStorage.setItem('music-streak', newStreak.toString());
@@ -111,8 +129,10 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     pauseMusic();
   };
 
-  const handleLoss = () => {
+  const handleLoss = (finalAttempts: string[]) => {
     setGameState('result');
+    setHasPlayedToday(true);
+    localStorage.setItem('music-daily-state', 'result');
     setStreak(0);
     localStorage.setItem('music-streak', '0');
     pauseMusic();
@@ -127,22 +147,12 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     });
   };
 
-  const nextSong = () => {
-    if (currentSongIndex >= 2) {
-      setDailyCompleted(true);
-    } else {
-      setCurrentSongIndex(prev => prev + 1);
-      setAttempts([]);
-      setGameState('playing');
-      setIsPlayerReady(false); // Reset ready state for next song
-      setCurrentTime(0);
-      setDailyCompleted(false);
-    }
-  };
-
   const shareResults = () => {
-    const icons = attempts.map((_, i) => i === attempts.length - 1 && gameState === 'result' && streak > 0 ? '🟩' : '🟥').join('');
-    const text = `🎧 REWIND TUNES\nSong ${currentSongIndex + 1}/3\nStreak: ${streak}\n${icons}\nPlay now!`;
+    const isWin = attempts.some(a => a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase());
+    const scoreText = isWin ? `${attempts.length}/${MAX_GUESSES}` : 'X/6';
+    const icons = attempts.map((_, i) => (i === attempts.length - 1 && isWin) ? '🟩' : '🟥').join('');
+    const text = `🎧 REWIND TUNES\nDaily Song\nScore: ${scoreText}\nStreak: ${streak}\n${icons}\nPlay now!`;
+    
     if (navigator.share) {
       navigator.share({ text }).catch(console.error);
     } else {
@@ -155,7 +165,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', textAlign: 'center' }}>
        <button 
         onClick={onBack}
-        style={{ position: 'absolute', top: '20px', left: '20px', background: 'rgba(255,255,255,0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}
+        style={{ position: 'absolute', top: '20px', left: '20px', background: 'rgba(255,255,255,0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '8px', borderRadius: '50%', cursor: 'pointer', zIndex: 100 }}
       >
         <ArrowLeft size={24} />
       </button>
@@ -163,7 +173,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
       <header style={{ marginBottom: '40px' }}>
         <h1 className="neon-text-cyan retro-text" style={{ fontSize: '2.5rem', marginBottom: '5px' }}>REWIND TUNES</h1>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
-          <span className="retro-text" style={{ color: 'var(--neon-pink)' }}>SONG {currentSongIndex + 1}/3</span>
+          <span className="retro-text" style={{ color: 'var(--neon-pink)' }}>DAILY TRACK</span>
           <span className="retro-text" style={{ color: 'var(--neon-yellow)' }}>STREAK: {streak}</span>
         </div>
       </header>
@@ -173,10 +183,9 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         <YouTube 
           key={song.id}
           videoId={song.youtubeId} 
-          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1 } }} 
+          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1, autoplay: 0 } }} 
           onReady={onPlayerReady} 
           onStateChange={(e) => {
-            // If video ends or errors, handle it
             if (e.data === 0) pauseMusic();
           }}
         />
@@ -189,7 +198,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
             whileHover={{ scale: isPlayerReady ? 1.1 : 1 }}
             whileTap={{ scale: isPlayerReady ? 0.9 : 1 }}
             onClick={isPlaying ? pauseMusic : playMusic}
-            disabled={!isPlayerReady}
+            disabled={!isPlayerReady || (hasPlayedToday && gameState === 'playing')}
             style={{ 
               width: '80px', height: '80px', borderRadius: '50%', 
               background: isPlayerReady ? 'var(--neon-cyan)' : '#3d2b54', 
@@ -231,13 +240,13 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
       {/* Emoji Hint */}
       <AnimatePresence>
-        {attempts.length >= 2 && gameState === 'playing' && (
+        {attempts.length >= 2 && (
           <motion.div 
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             style={{ marginBottom: '20px', fontSize: '2rem', letterSpacing: '8px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '12px', border: '1px dashed var(--neon-yellow)' }}
           >
-            <div style={{ fontSize: '0.7rem', color: 'var(--neon-yellow)', marginBottom: '5px' }} className="retro-text">EMOJI HINT UNLOCKED</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--neon-yellow)', marginBottom: '5px' }} className="retro-text">EMOJI HINT</div>
             {song.emojis}
           </motion.div>
         )}
@@ -250,7 +259,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
             {attempts[i] ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attempts[i]}</span>
-                {i === attempts.length - 1 && gameState === 'result' && streak > 0 ? <CheckCircle2 size={18} color="var(--key-correct)" /> : <XCircle size={18} color="#ff4444" />}
+                {i === attempts.length - 1 && gameState === 'result' && attempts.some(a => a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase()) ? <CheckCircle2 size={18} color="var(--key-correct)" /> : <XCircle size={18} color="#ff4444" />}
               </div>
             ) : (
               <span style={{ opacity: 0.3 }}>Attempt {i + 1}...</span>
@@ -267,39 +276,29 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
             placeholder="Artist or Song Title..." 
             value={currentGuess}
             onChange={(e) => setCurrentGuess(e.target.value)}
+            disabled={hasPlayedToday}
             style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '12px 15px', color: 'white', outline: 'none' }}
           />
-          <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 20px' }}>GUESS</button>
+          <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 20px' }} disabled={hasPlayedToday}>GUESS</button>
         </form>
       ) : (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
            <div style={{ background: 'rgba(0,255,255,0.1)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--neon-cyan)' }}>
               <div style={{ fontSize: '1.5rem', marginBottom: '10px' }}>{song.emojis}</div>
-              <div className="retro-text" style={{ fontSize: '0.9rem', color: 'var(--neon-cyan)', marginBottom: '5px' }}>THE SONG WAS</div>
+              <div className="retro-text" style={{ fontSize: '0.9rem', color: 'var(--neon-cyan)', marginBottom: '5px' }}>TODAY'S SONG</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>{song.title}</div>
               <div style={{ color: '#aaa' }}>{song.artist}</div>
            </div>
            <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={nextSong} className="btn-neon" style={{ flex: 1 }}>{currentSongIndex < 2 ? 'NEXT SONG' : 'FINISH'}</button>
+                <button onClick={onBack} className="btn-neon" style={{ flex: 1 }}>BACK TO ARCADE</button>
                 <button onClick={shareResults} className="btn-neon" style={{ borderColor: 'var(--neon-pink)', color: 'var(--neon-pink)' }}><Share2 size={20} /></button>
+           </div>
+           <div style={{ marginTop: '20px', color: '#666', fontSize: '0.9rem' }} className="retro-text">
+              <Clock size={14} style={{ display: 'inline', marginRight: '5px' }} />
+              NEXT SONG TOMORROW
            </div>
         </motion.div>
       )}
-
-      {/* Final Results Modal */}
-      <AnimatePresence>
-        {dailyCompleted && (
-            <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <motion.div className="modal-content">
-                    <Trophy size={60} color="var(--neon-yellow)" style={{ marginBottom: '20px' }} />
-                    <h2 className="retro-text neon-text-cyan" style={{ fontSize: '2.5rem' }}>SET COMPLETE</h2>
-                    <p style={{ margin: '20px 0', fontSize: '1.2rem' }}>You finished today's tracks!</p>
-                    <div className="retro-text" style={{ fontSize: '1.5rem', color: 'var(--neon-pink)' }}>STREAK: {streak}</div>
-                    <button onClick={onBack} className="btn-neon">BACK TO ARCADE</button>
-                </motion.div>
-            </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
