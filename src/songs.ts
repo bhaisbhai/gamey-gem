@@ -10,50 +10,162 @@ export interface Song {
 export const DAILY_SONGS: Song[] = [
   {
     id: "1",
-    youtubeId: "YykjpeuMNEk",
-    title: "YELLOW",
-    artist: "COLDPLAY",
+    youtubeId: "GxBSyx85Kp8",
+    title: "YEAH",
+    artist: "USHER",
     startAt: 0,
-    emojis: "🟡⭐🌻🍋"
+    emojis: "🕺🔥🌃🎧"
   },
   {
     id: "2",
-    youtubeId: "hT_nvWreIhg",
-    title: "WHAT MAKES YOU BEAUTIFUL",
-    artist: "ONE DIRECTION",
+    youtubeId: "C-u5WLJ9Yk4",
+    title: "BABY ONE MORE TIME",
+    artist: "BRITNEY SPEARS",
     startAt: 0,
-    emojis: "👸✨💖🌅"
+    emojis: "👧🎀🏫📚"
   },
   {
     id: "3",
-    youtubeId: "09R8_2nJtjg",
-    title: "SUGAR",
-    artist: "MAROON 5",
-    startAt: 45,
-    emojis: "🍬🍭🍰🧁"
+    youtubeId: "PQmrmbc1j9E",
+    title: "CHAIYYA CHAIYYA",
+    artist: "A.R. RAHMAN",
+    startAt: 0,
+    emojis: "🟡🚂🕺🕺"
   },
   {
     id: "4",
-    youtubeId: "9bZkp7q19f0",
-    title: "GANGNAM STYLE",
-    artist: "PSY",
-    startAt: 10,
-    emojis: "🏇🕶️🕺🇰🇷"
+    youtubeId: "_Yhyp-_hK2w",
+    title: "LOSE YOURSELF",
+    artist: "EMINEM",
+    startAt: 0,
+    emojis: "🍝🎤🧥🎬"
   },
   {
     id: "5",
-    youtubeId: "fKopy74weus",
-    title: "THUNDER",
-    artist: "IMAGINE DRAGONS",
+    youtubeId: "1-9HeF9m2-Q",
+    title: "MAUJA HI MAUJA",
+    artist: "MIKA SINGH",
     startAt: 0,
-    emojis: "⚡⛈️🌩️🥁"
+    emojis: "🕺💃👳‍♂️🎉"
   },
   {
     id: "6",
-    youtubeId: "rtOvBOTyX00",
-    title: "A THOUSAND YEARS",
-    artist: "CHRISTINA PERRI",
-    startAt: 60,
-    emojis: "👰⏳💍🧛"
+    youtubeId: "ViwtN6uxdg4",
+    title: "CRAZY IN LOVE",
+    artist: "BEYONCE",
+    startAt: 0,
+    emojis: "💃🎺🏙️🔥"
+  },
+  {
+    id: "7",
+    youtubeId: "LOZuxwVk7TU",
+    title: "TOXIC",
+    artist: "BRITNEY SPEARS",
+    startAt: 0,
+    emojis: "☣️👗✈️🤫"
+  },
+  {
+    id: "8",
+    youtubeId: "g0eO74UmRBs",
+    title: "KAL HO NAA HO",
+    artist: "SONU NIGAM",
+    startAt: 0,
+    emojis: "🗽💔🏙️🎻"
+  },
+  {
+    id: "9",
+    youtubeId: "5qm8PH4xAss",
+    title: "IN DA CLUB",
+    artist: "50 CENT",
+    startAt: 0,
+    emojis: "🍾💰💊🏥"
+  },
+  {
+    id: "10",
+    youtubeId: "DUT5rEU6pqM",
+    title: "HIPS DON'T LIE",
+    artist: "SHAKIRA",
+    startAt: 0,
+    emojis: "💃🇨🇴👯‍♀️🔥"
+  },
+  {
+    id: "11",
+    youtubeId: "8WYHDfJDPz8",
+    title: "DILEMMA",
+    artist: "NELLY",
+    startAt: 0,
+    emojis: "📱📞💘🏢"
+  },
+  {
+    id: "12",
+    youtubeId: "CvBfHwUxHIk",
+    title: "UMBRELLA",
+    artist: "RIHANNA",
+    startAt: 0,
+    emojis: "☂️🌧️🌂💃"
+  },
+  {
+    id: "13",
+    youtubeId: "7P-O7u_6L_A",
+    title: "DESI GIRL",
+    artist: "SHANKAR MAHADEVAN",
+    startAt: 0,
+    emojis: "👗👩‍🦰🤴🤴"
+  },
+  {
+    id: "14",
+    youtubeId: "IBvg3WeqP1U",
+    title: "BOLE CHUDIYAN",
+    artist: "AMIT KUMAR",
+    startAt: 0,
+    emojis: "💍👗💃👨‍👩‍👧‍👦"
+  },
+  {
+    id: "15",
+    youtubeId: "6vwNcNOTVzY",
+    title: "GOLD DIGGER",
+    artist: "KANYE WEST",
+    startAt: 15,
+    emojis: "💰⛏️💍👠"
+  },
+  {
+    id: "16",
+    youtubeId: "k_O7Fm92Glg",
+    title: "KAHO NAA PYAAR HAI",
+    artist: "LUCKY ALI",
+    startAt: 0,
+    emojis: "🏝️🕺🛳️💘"
+  },
+  {
+    id: "17",
+    youtubeId: "3gOHvDP_vCQ",
+    title: "SEXYBACK",
+    artist: "JUSTIN TIMBERLAKE",
+    startAt: 0,
+    emojis: "🕺🍑🔙🕶️"
+  },
+  {
+    id: "18",
+    youtubeId: "vSkb0kDacjs",
+    title: "DHOOM MACHALE",
+    artist: "SUNIDHI CHAUHAN",
+    startAt: 0,
+    emojis: "🏍️🔥💨💃"
+  },
+  {
+    id: "19",
+    youtubeId: "gGdGFtwCNBE",
+    title: "MR BRIGHTSIDE",
+    artist: "THE KILLERS",
+    startAt: 0,
+    emojis: "🎰👁️💔🎸"
+  },
+  {
+    id: "20",
+    youtubeId: "5NPBIwQffyc",
+    title: "COMPLICATED",
+    artist: "AVRIL LAVIGNE",
+    startAt: 0,
+    emojis: "🛹🎸👧💔"
   }
 ];
