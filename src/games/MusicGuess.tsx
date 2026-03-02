@@ -13,11 +13,6 @@ const MAX_GUESSES = 6;
 const MAX_LIVES = 2;
 const UNLOCK_TIMES = [5, 10, 20, 35, 50, 60]; 
 
-const getDailySeed = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-};
-
 const START_DATE = new Date('2026-02-27T00:00:00Z').getTime();
 
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
@@ -34,23 +29,19 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
   const playerRef = useRef<any>(null);
   const intervalRef = useRef<any>(null);
+  const isActuallyPlaying = useRef(false); // Ref to avoid state-lag bug
   
-  const daySeed = getDailySeed();
-  
-  // Calculate day number since launch
+  // Calculate day seed and song
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dayNumber = Math.floor((today - START_DATE) / (24 * 60 * 60 * 1000));
+  const daySeed = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayNumber = Math.floor((todayStart - START_DATE) / (24 * 60 * 60 * 1000));
   
-  // Deterministic but non-sequential shuffle-like pick
-  // Using a simple hash to make the order feel random but fixed
-  const getIndex = (day: number, total: number) => {
-    return (day * 13 + 7) % total;
-  };
-  
+  const getIndex = (day: number, total: number) => (day * 13 + 7) % total;
   const songIndex = getIndex(dayNumber, DAILY_SONGS.length);
   const song = DAILY_SONGS[songIndex];
 
+  // Load persistence
   useEffect(() => {
     const savedStreak = localStorage.getItem('music-streak') || '0';
     setStreak(parseInt(savedStreak));
@@ -84,26 +75,29 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   };
 
   const playMusic = () => {
-    if (playerRef.current && isPlayerReady) {
-      playerRef.current.seekTo(song.startAt, true);
-      playerRef.current.playVideo();
-      setIsPlaying(true);
+    if (!playerRef.current || !isPlayerReady) return;
 
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      intervalRef.current = setInterval(() => {
-        const playerTime = playerRef.current.getCurrentTime();
-        const elapsed = Math.max(0, playerTime - song.startAt);
-        setCurrentTime(elapsed);
-        
-        if (elapsed >= UNLOCK_TIMES[attempts.length]) {
-          pauseMusic();
-        }
-      }, 50);
-    }
+    isActuallyPlaying.current = true;
+    setIsPlaying(true);
+    
+    playerRef.current.seekTo(song.startAt, true);
+    playerRef.current.playVideo();
+
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      const pTime = playerRef.current.getCurrentTime();
+      const elapsed = Math.max(0, pTime - song.startAt);
+      setCurrentTime(elapsed);
+      
+      if (elapsed >= UNLOCK_TIMES[attempts.length]) {
+        pauseMusic();
+      }
+    }, 50);
   };
 
   const pauseMusic = () => {
     if (playerRef.current) {
+      isActuallyPlaying.current = false;
       playerRef.current.pauseVideo();
       setIsPlaying(false);
       if (intervalRef.current) {
@@ -111,30 +105,18 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         intervalRef.current = null;
       }
       setTimeout(() => {
-          setCurrentTime(0);
+          if (!isActuallyPlaying.current) setCurrentTime(0);
       }, 300);
     }
   };
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Voice input is not supported in this browser.");
-      return;
-    }
-
+    if (!SpeechRecognition) return alert("Voice input not supported.");
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setCurrentGuess(transcript);
-    };
-
+    recognition.onresult = (e: any) => setCurrentGuess(e.results[0][0].transcript);
     recognition.start();
   };
 
@@ -142,27 +124,21 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     if (e) e.preventDefault();
     if (gameState !== 'playing') return;
 
-    const guess = isSkip ? "SKIPPED" : currentGuess.toUpperCase().trim();
-    if (!isSkip && !guess) return;
+    const guessStr = isSkip ? "" : currentGuess.toUpperCase().trim();
+    if (!isSkip && !guessStr) return;
 
-    const isCorrect = !isSkip && (guess === song.title.toUpperCase() || guess === song.artist.toUpperCase());
-    const newAttempts = [...attempts, isSkip ? "" : currentGuess];
+    const isCorrect = !isSkip && (guessStr === song.title.toUpperCase() || guessStr === song.artist.toUpperCase());
+    const newAttempts = [...attempts, isSkip ? "SKIPPED" : currentGuess];
     
     let newLives = lives;
     const newRevealed = new Set(revealedLetters);
 
     if (!isSkip) {
-      // Reveal letters from guess that are in the song title or artist
       const fullAnswer = (song.title + song.artist).toUpperCase();
-      guess.split('').forEach(char => {
-        if (fullAnswer.includes(char)) {
-          newRevealed.add(char);
-        }
+      guessStr.split('').forEach(char => {
+        if (fullAnswer.includes(char)) newRevealed.add(char);
       });
-
-      if (!isCorrect) {
-        newLives = Math.max(0, lives - 1);
-      }
+      if (!isCorrect) newLives = Math.max(0, lives - 1);
     }
 
     setAttempts(newAttempts);
@@ -176,80 +152,58 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
     localStorage.setItem('music-daily-letters', JSON.stringify(Array.from(newRevealed)));
 
     if (isCorrect) {
-      handleWin(newAttempts);
+      handleWin();
     } else if (newLives === 0 || newAttempts.length >= MAX_GUESSES) {
-      handleLoss(newAttempts);
-    } else {
-        localStorage.setItem('music-daily-state', 'playing');
+      handleLoss();
     }
   };
 
-  const handleWin = (finalAttempts: string[]) => {
+  const handleWin = () => {
     setGameState('result');
     localStorage.setItem('music-daily-state', 'result');
     const newStreak = streak + 1;
     setStreak(newStreak);
     localStorage.setItem('music-streak', newStreak.toString());
     
-    // Reveal everything
     const allChars = (song.title + song.artist).toUpperCase().split('');
     setRevealedLetters(new Set([...Array.from(revealedLetters), ...allChars]));
-    
     triggerConfetti();
     pauseMusic();
   };
 
-  const handleLoss = (finalAttempts: string[]) => {
+  const handleLoss = () => {
     setGameState('result');
     localStorage.setItem('music-daily-state', 'result');
     setStreak(0);
     localStorage.setItem('music-streak', '0');
     
-    // Reveal everything
     const allChars = (song.title + song.artist).toUpperCase().split('');
     setRevealedLetters(new Set([...Array.from(revealedLetters), ...allChars]));
-    
     pauseMusic();
   };
 
   const triggerConfetti = () => {
-    confetti({
-      particleCount: 150,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#00ffff', '#ff00ff', '#ffff00']
-    });
+    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#00ffff', '#ff00ff', '#ffff00'] });
   };
 
   const shareResults = () => {
     const isWin = attempts.some(a => a && (a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase()));
-    const scoreText = isWin ? `${attempts.filter(a => a).length}/${MAX_GUESSES}` : 'X/6';
+    const scoreText = isWin ? `${attempts.filter(a => a !== 'SKIPPED').length}/${MAX_GUESSES}` : 'X/6';
     const icons = attempts.map(a => (a && (a.toUpperCase() === song.title.toUpperCase() || a.toUpperCase() === song.artist.toUpperCase())) ? '🟩' : '🟥').join('');
-    const text = `🎧 REWIND TUNES\nDaily Song\nScore: ${scoreText}\nStreak: ${streak}\n${icons}\nPlay now!`;
-    
-    if (navigator.share) {
-      navigator.share({ text }).catch(console.error);
-    } else {
-      navigator.clipboard.writeText(text);
-      alert('Copied to clipboard!');
-    }
+    const text = `🎧 REWIND TUNES\nScore: ${scoreText}\nStreak: ${streak}\n${icons}\nPlay now!`;
+    if (navigator.share) navigator.share({ text }).catch(console.error);
+    else { navigator.clipboard.writeText(text); alert('Copied!'); }
   };
 
   const renderBlanks = (text: string) => {
     return text.split('').map((char, i) => {
       const isSpace = char === ' ';
       const isRevealed = revealedLetters.has(char.toUpperCase()) || isSpace;
-      
       return (
         <span key={i} style={{ 
-          display: 'inline-block', 
-          width: isSpace ? '10px' : '20px',
-          margin: '0 2px',
-          borderBottom: isSpace ? 'none' : '2px solid var(--neon-cyan)',
-          fontSize: '1.2rem',
-          fontWeight: 'bold',
-          color: isRevealed ? 'white' : 'transparent',
-          textTransform: 'uppercase'
+          display: 'inline-block', width: isSpace ? '10px' : '20px', margin: '0 2px',
+          borderBottom: isSpace ? 'none' : '2px solid var(--neon-cyan)', fontSize: '1.2rem',
+          fontWeight: 'bold', color: isRevealed ? 'white' : 'transparent', textTransform: 'uppercase'
         }}>
           {isRevealed ? char : '_'}
         </span>
@@ -259,10 +213,7 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
 
   return (
     <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto', textAlign: 'center', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-       <button 
-        onClick={onBack}
-        style={{ position: 'absolute', top: '20px', left: '20px', background: 'rgba(255,255,255,0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '8px', borderRadius: '50%', cursor: 'pointer', zIndex: 100 }}
-      >
+       <button onClick={onBack} style={{ position: 'absolute', top: '20px', left: '20px', background: 'rgba(255,255,255,0.1)', border: '1px solid var(--neon-cyan)', color: 'var(--neon-cyan)', padding: '8px', borderRadius: '50%', cursor: 'pointer', zIndex: 100 }}>
         <ArrowLeft size={24} />
       </button>
 
@@ -271,11 +222,8 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         <div style={{ display: 'flex', justifyContent: 'center', gap: '25px', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             {[...Array(MAX_LIVES)].map((_, i) => (
-              <motion.div 
-                key={i}
-                animate={{ scale: i < lives ? 1 : 0.8, opacity: i < lives ? 1 : 0.3 }}
-              >
-                {i < lives ? <Heart size={24} color="var(--neon-pink)" fill="var(--neon-pink)" style={{ filter: 'drop-shadow(0 0 5px var(--neon-pink))' }} /> : <HeartCrack size={24} color="#4a3b5c" />}
+              <motion.div key={i} animate={{ scale: i < lives ? 1 : 0.8, opacity: i < lives ? 1 : 0.3 }}>
+                {i < lives ? <Heart size={24} color="var(--neon-pink)" fill="var(--neon-pink)" /> : <HeartCrack size={24} color="#4a3b5c" />}
               </motion.div>
             ))}
           </div>
@@ -283,139 +231,93 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
         </div>
       </header>
 
-      {/* Hangman Display */}
       <div style={{ marginBottom: '25px', padding: '15px', background: 'rgba(0,255,255,0.05)', borderRadius: '12px', border: '1px solid rgba(0,255,255,0.1)' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', marginBottom: '10px' }} className="retro-text">TITLE</div>
-          <div style={{ marginBottom: '15px', minHeight: '30px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {renderBlanks(song.title)}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', marginBottom: '10px' }} className="retro-text">ARTIST</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
-              {renderBlanks(song.artist)}
-          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', marginBottom: '5px' }} className="retro-text">TITLE</div>
+          <div style={{ marginBottom: '15px', minHeight: '30px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>{renderBlanks(song.title)}</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--neon-cyan)', marginBottom: '5px' }} className="retro-text">ARTIST</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>{renderBlanks(song.artist)}</div>
       </div>
 
-      {/* Hidden YouTube Player */}
       <div style={{ display: 'none' }}>
         <YouTube 
-          key={song.id}
-          videoId={song.youtubeId} 
-          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1, autoplay: 0, rel: 0 } }} 
+          key={song.id} videoId={song.youtubeId} 
+          opts={{ playerVars: { start: song.startAt, controls: 0, disablekb: 1, modestbranding: 1, autoplay: 0 } }} 
           onReady={onPlayerReady} 
           onStateChange={(e) => {
-            if (e.data === 1 && !isPlaying) pauseMusic();
-            if (e.data === 0) pauseMusic();
+            if (e.data === 1 && !isActuallyPlaying.current) playerRef.current.pauseVideo();
+            if (e.data === 0) setIsPlaying(false);
           }}
         />
       </div>
 
-      {/* Play Progress UI */}
-      <div style={{ background: '#1a0b2e', border: '2px solid #3d2b54', borderRadius: '16px', padding: '30px', marginBottom: '20px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+      <div style={{ background: '#1a0b2e', border: '2px solid #3d2b54', borderRadius: '16px', padding: '20px', marginBottom: '25px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '15px' }}>
           <motion.button
-            whileHover={{ scale: isPlayerReady ? 1.1 : 1 }}
-            whileTap={{ scale: isPlayerReady ? 0.9 : 1 }}
-            onClick={isPlaying ? pauseMusic : playMusic}
-            disabled={!isPlayerReady}
+            whileHover={{ scale: isPlayerReady ? 1.1 : 1 }} whileTap={{ scale: isPlayerReady ? 0.9 : 1 }}
+            onClick={isPlaying ? pauseMusic : playMusic} disabled={!isPlayerReady}
             style={{ 
-              width: '80px', height: '80px', borderRadius: '50%', 
-              background: isPlayerReady ? 'var(--neon-cyan)' : '#3d2b54', 
-              border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', 
-              cursor: isPlayerReady ? 'pointer' : 'wait', 
-              boxShadow: isPlayerReady ? '0 0 20px rgba(0, 255, 255, 0.4)' : 'none' 
+              width: '70px', height: '70px', borderRadius: '50%', background: isPlayerReady ? 'var(--neon-cyan)' : '#3d2b54', 
+              border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isPlayerReady ? 'pointer' : 'wait'
             }}
           >
-            {!isPlayerReady ? (
-              <Loader2 size={40} color="#888" className="animate-spin" />
-            ) : isPlaying ? (
-              <Pause size={40} color="#0d0221" />
-            ) : (
-              <Play size={40} color="#0d0221" style={{ marginLeft: '5px' }} />
-            )}
+            {!isPlayerReady ? <Loader2 size={35} className="animate-spin" /> : isPlaying ? <Pause size={35} color="#0d0221" /> : <Play size={35} color="#0d0221" style={{ marginLeft: '5px' }} />}
           </motion.button>
         </div>
-
-        {/* Timeline */}
-        <div style={{ height: '12px', background: '#2a1b3d', borderRadius: '6px', position: 'relative', marginBottom: '10px' }}>
-            <motion.div 
-                style={{ 
-                    position: 'absolute', height: '100%', background: 'var(--neon-cyan)', borderRadius: '6px', 
-                    width: `${(currentTime / 60) * 100}%`,
-                    boxShadow: '0 0 10px var(--neon-cyan)'
-                }} 
-            />
-            {/* Markers for unlocked segments */}
-            {UNLOCK_TIMES.map((time, i) => (
-                <div key={i} style={{ position: 'absolute', left: `${(time / 60) * 100}%`, top: 0, bottom: 0, width: '2px', background: i < attempts.length ? 'transparent' : '#3d2b54' }} />
-            ))}
+        <div style={{ height: '8px', background: '#2a1b3d', borderRadius: '4px', position: 'relative', marginBottom: '10px' }}>
+            <motion.div style={{ position: 'absolute', height: '100%', background: 'var(--neon-cyan)', borderRadius: '4px', width: `${(currentTime / 60) * 100}%` }} />
+            {UNLOCK_TIMES.map((time, i) => <div key={i} style={{ position: 'absolute', left: `${(time / 60) * 100}%`, top: 0, bottom: 0, width: '2px', background: i < attempts.length ? 'transparent' : '#3d2b54' }} />)}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.8rem' }} className="retro-text">
-            <span>0s</span>
-            <span>{UNLOCK_TIMES[attempts.length] || 60}s UNLOCKED</span>
-            <span>60s</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.7rem' }} className="retro-text">
+            <span>0s</span><span>{UNLOCK_TIMES[attempts.length] || 60}s UNLOCKED</span><span>60s</span>
         </div>
       </div>
 
-      {/* Input Area */}
       {gameState === 'playing' && (
-        <div style={{ marginBottom: '30px' }}>
+        <div style={{ marginBottom: '20px' }}>
             <form onSubmit={handleGuess} style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                <input 
-                    type="text" 
-                    placeholder="Artist or Song Title..." 
-                    value={currentGuess}
-                    onChange={(e) => setCurrentGuess(e.target.value)}
-                    style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '12px 15px', color: 'white', outline: 'none' }}
-                />
-                <button 
-                    type="button" 
-                    onClick={startListening}
-                    style={{ background: isListening ? 'var(--neon-pink)' : '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '0 12px', color: 'white', cursor: 'pointer', transition: 'all 0.2s' }}
-                >
-                    <Mic size={20} className={isListening ? "animate-pulse" : ""} />
+                <input type="text" placeholder="Song or Artist..." value={currentGuess} onChange={(e) => setCurrentGuess(e.target.value)} style={{ flex: 1, background: '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '10px', color: 'white', outline: 'none' }} />
+                <button type="button" onClick={startListening} style={{ background: isListening ? 'var(--neon-pink)' : '#2a1b3d', border: '2px solid #3d2b54', borderRadius: '8px', padding: '0 10px', color: 'white' }}>
+                    <Mic size={18} className={isListening ? "animate-pulse" : ""} />
                 </button>
-                <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 15px', fontSize: '1rem' }}>GUESS</button>
+                <button type="submit" className="btn-neon" style={{ margin: 0, padding: '0 15px', fontSize: '0.9rem' }}>GUESS</button>
             </form>
-            <button 
-                onClick={() => handleGuess(undefined, true)}
-                style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #3d2b54', borderRadius: '8px', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer' }}
-            >
-                <SkipForward size={18} /> SKIP TO NEXT CLUE
-            </button>
+            <button onClick={() => handleGuess(undefined, true)} style={{ width: '100%', padding: '8px', background: 'transparent', border: '1px solid #3d2b54', borderRadius: '8px', color: '#888', cursor: 'pointer', fontSize: '0.8rem' }}>SKIP TO NEXT CLUE</button>
         </div>
       )}
 
-      {/* Emoji Hint */}
       <AnimatePresence>
         {attempts.length >= 2 && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            style={{ marginBottom: '20px', fontSize: '2rem', letterSpacing: '8px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '12px', border: '1px dashed var(--neon-yellow)' }}
-          >
-            <div style={{ fontSize: '0.7rem', color: 'var(--neon-yellow)', marginBottom: '5px' }} className="retro-text">EMOJI HINT</div>
+          <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} style={{ marginBottom: '20px', fontSize: '1.8rem', letterSpacing: '6px', background: 'rgba(255,255,255,0.05)', padding: '8px', borderRadius: '12px', border: '1px dashed var(--neon-yellow)' }}>
+            <div style={{ fontSize: '0.6rem', color: 'var(--neon-yellow)', marginBottom: '3px' }} className="retro-text">EMOJI HINT</div>
             {song.emojis}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Result Area */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+        {[...Array(MAX_GUESSES)].map((_, i) => (
+          <div key={i} style={{ height: '35px', border: '1px solid #3d2b54', borderRadius: '6px', display: 'flex', alignItems: 'center', padding: '0 12px', background: attempts[i] ? 'rgba(255,255,255,0.05)' : 'transparent', color: attempts[i] ? '#fff' : '#444', fontSize: '0.8rem' }}>
+            {attempts[i] ? <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attempts[i]}</span>
+                {(attempts[i] !== 'SKIPPED' && (attempts[i].toUpperCase() === song.title.toUpperCase() || attempts[i].toUpperCase() === song.artist.toUpperCase())) ? <CheckCircle2 size={14} color="var(--key-correct)" /> : <XCircle size={14} color="#ff4444" />}
+              </div> : <span style={{ opacity: 0.3 }}>Attempt {i + 1}...</span>}
+          </div>
+        ))}
+      </div>
+
       {gameState === 'result' && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ marginTop: 'auto', paddingBottom: '20px' }}>
-           <div style={{ background: 'rgba(0,255,255,0.1)', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--neon-cyan)' }}>
-              <div style={{ fontSize: '1.5rem', marginBottom: '10px' }}>{song.emojis}</div>
-              <div className="retro-text" style={{ fontSize: '0.9rem', color: 'var(--neon-cyan)', marginBottom: '5px' }}>TODAY'S SONG</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>{song.title}</div>
-              <div style={{ color: '#aaa' }}>{song.artist}</div>
+           <div style={{ background: 'rgba(0,255,255,0.1)', padding: '15px', borderRadius: '12px', marginBottom: '15px', border: '1px solid var(--neon-cyan)' }}>
+              <div style={{ fontSize: '1.2rem', marginBottom: '8px' }}>{song.emojis}</div>
+              <div className="retro-text" style={{ fontSize: '0.8rem', color: 'var(--neon-cyan)', marginBottom: '3px' }}>TODAY'S SONG</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{song.title}</div>
+              <div style={{ color: '#aaa', fontSize: '0.9rem' }}>{song.artist}</div>
            </div>
-           <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={onBack} className="btn-neon" style={{ flex: 1 }}>BACK TO ARCADE</button>
-                <button onClick={shareResults} className="btn-neon" style={{ borderColor: 'var(--neon-pink)', color: 'var(--neon-pink)' }}><Share2 size={20} /></button>
+           <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={onBack} className="btn-neon" style={{ flex: 1, fontSize: '1rem' }}>ARCADE</button>
+                <button onClick={shareResults} className="btn-neon" style={{ borderColor: 'var(--neon-pink)', color: 'var(--neon-pink)', fontSize: '1rem' }}><Share2 size={18} /></button>
            </div>
-           <div style={{ marginTop: '20px', color: '#666', fontSize: '0.9rem' }} className="retro-text">
-              <Clock size={14} style={{ display: 'inline', marginRight: '5px' }} />
-              NEXT SONG TOMORROW
-           </div>
+           <div style={{ marginTop: '15px', color: '#666', fontSize: '0.8rem' }} className="retro-text"><Clock size={12} style={{ display: 'inline', marginRight: '5px' }} />NEXT SONG TOMORROW</div>
         </motion.div>
       )}
     </div>
