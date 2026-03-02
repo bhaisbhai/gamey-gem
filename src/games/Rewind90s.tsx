@@ -11,9 +11,11 @@ const KEYBOARD_ROWS = [
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
 ];
 
-const getDailyPuzzle = () => {
-  const randomIndex = Math.floor(Math.random() * PUZZLES.length);
-  return PUZZLES[randomIndex];
+const START_DATE = new Date('2026-02-27T00:00:00Z').getTime();
+
+const getDailySeed = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 };
 
 interface Rewind90sProps {
@@ -21,19 +23,31 @@ interface Rewind90sProps {
 }
 
 const Rewind90s: React.FC<Rewind90sProps> = ({ onBack }) => {
-  const [puzzle, setPuzzle] = useState(PUZZLES[0]);
   const [guessedLetters, setGuessedLetters] = useState<Set<string>>(new Set());
   const [gameState, setGameState] = useState<'playing' | 'won' | 'lost'>('playing');
 
-  useEffect(() => {
-    startNewGame();
-  }, []);
-
-  const startNewGame = () => {
-    setPuzzle(getDailyPuzzle());
-    setGuessedLetters(new Set());
-    setGameState('playing');
+  const daySeed = getDailySeed();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayNumber = Math.floor((today - START_DATE) / (24 * 60 * 60 * 1000));
+  
+  const getIndex = (day: number, total: number) => {
+    return (day * 17 + 3) % total; // Different salt than music guess
   };
+  
+  const puzzleIndex = getIndex(dayNumber, PUZZLES.length);
+  const puzzle = PUZZLES[puzzleIndex];
+
+  // Load state
+  useEffect(() => {
+    const lastPlayedSeed = localStorage.getItem('rewind90s-last-played');
+    if (lastPlayedSeed === daySeed) {
+      const savedGuesses = JSON.parse(localStorage.getItem('rewind90s-daily-guesses') || '[]');
+      const savedState = localStorage.getItem('rewind90s-daily-state') as any;
+      setGuessedLetters(new Set(savedGuesses));
+      if (savedState) setGameState(savedState);
+    }
+  }, [daySeed]);
 
   const answerClean = puzzle.answer.replace(/[^A-Z]/g, '');
   const uniqueLettersInAnswer = new Set(answerClean.split(''));
@@ -49,9 +63,11 @@ const Rewind90s: React.FC<Rewind90sProps> = ({ onBack }) => {
 
     if (isWinner) {
       setGameState('won');
+      localStorage.setItem('rewind90s-daily-state', 'won');
       triggerWinCelebration();
     } else if (isLoser) {
       setGameState('lost');
+      localStorage.setItem('rewind90s-daily-state', 'lost');
     }
   }, [guessedLetters, isWinner, isLoser, gameState]);
 
@@ -85,39 +101,37 @@ const Rewind90s: React.FC<Rewind90sProps> = ({ onBack }) => {
   const handleGuess = useCallback((letter: string) => {
     if (gameState !== 'playing' || guessedLetters.has(letter)) return;
     
-    setGuessedLetters(prev => {
-      const newSet = new Set(prev);
-      newSet.add(letter);
-      return newSet;
-    });
-  }, [gameState, guessedLetters]);
+    const newGuesses = new Set(guessedLetters);
+    newGuesses.add(letter);
+    setGuessedLetters(newGuesses);
+
+    // Save progress
+    localStorage.setItem('rewind90s-last-played', daySeed);
+    localStorage.setItem('rewind90s-daily-guesses', JSON.stringify(Array.from(newGuesses)));
+    localStorage.setItem('rewind90s-daily-state', 'playing');
+  }, [gameState, guessedLetters, daySeed]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toUpperCase();
       if (/^[A-Z]$/.test(key)) {
         handleGuess(key);
-      } else if (e.key === 'Enter' && gameState !== 'playing') {
-        startNewGame();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleGuess, gameState]);
+  }, [handleGuess]);
 
   const generateShareText = () => {
-    const score = MAX_LIVES - wrongGuesses.length;
+    const score = livesRemaining;
     let grid = '';
     for(let i=0; i<MAX_LIVES; i++) {
         if (i < score) grid += '🟩';
         else grid += '🟥';
     }
     
-    const text = `REWIND 90s 📼
-Category: ${puzzle.category}
-Score: ${score}/${MAX_LIVES} ${grid}
-Play now!`;
+    const text = `REWIND 90s 📼\nCategory: ${puzzle.category}\nLives: ${score}/${MAX_LIVES} ${grid}\nPlay now!`;
     if (navigator.share) {
       navigator.share({
         title: 'REWIND 90s',
@@ -263,8 +277,8 @@ Play now!`;
               </div>
 
               <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button className="btn-neon" onClick={startNewGame} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Play size={24} /> PLAY AGAIN
+                <button className="btn-neon" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  BACK TO ARCADE
                 </button>
                 {gameState === 'won' && (
                   <button className="btn-neon" onClick={generateShareText} style={{ borderColor: 'var(--neon-cyan)', color: 'var(--neon-cyan)' }}>
