@@ -167,5 +167,85 @@ export const DAILY_SONGS: Song[] = [
     artist: "AVRIL LAVIGNE",
     startAt: 0,
     emojis: "🛹🎸👧💔"
+  },
+  {
+    id: "21",
+    youtubeId: "f9pC9U90fTo",
+    title: "DIL TO PAGAL HAI",
+    artist: "LATA MANGESHKAR",
+    startAt: 0,
+    emojis: "🕺💃💘🎹"
+  },
+  {
+    id: "22",
+    youtubeId: "Kgjkth67Rsc",
+    title: "HOLLABACK GIRL",
+    artist: "GWEN STEFANI",
+    startAt: 0,
+    emojis: "🍌📣🏫👯‍♀️"
+  },
+  {
+    id: "23",
+    youtubeId: "G6pYVAnmBAs",
+    title: "EMPIRE STATE OF MIND",
+    artist: "JAY-Z",
+    startAt: 15,
+    emojis: "🏙️🗽🍎🚕"
+  },
+  {
+    id: "24",
+    youtubeId: "m_9hfHvQSNo",
+    title: "IRREPLACEABLE",
+    artist: "BEYONCE",
+    startAt: 0,
+    emojis: "📦⬅️🚘💄"
+  },
+  {
+    id: "25",
+    youtubeId: "oE6pE547f_s",
+    title: "DARD-E-DISCO",
+    artist: "SUKHWINDER SINGH",
+    startAt: 25,
+    emojis: "🕺✨🏜️🔥"
+  },
+  {
+    id: "26",
+    youtubeId: "weRHyjj34ZE",
+    title: "WHENEVER WHEREVER",
+    artist: "SHAKIRA",
+    startAt: 0,
+    emojis: "💃🏔️🐎🌊"
+  },
+  {
+    id: "27",
+    youtubeId: "Wp0hW6erhfM",
+    title: "SINGLE LADIES",
+    artist: "BEYONCE",
+    startAt: 0,
+    emojis: "💍👯‍♀️💃🖤"
+  },
+  {
+    id: "28",
+    youtubeId: "mXmS6M2vj3w",
+    title: "STAN",
+    artist: "EMINEM",
+    startAt: 0,
+    emojis: "✉️🌧️🚗📻"
+  },
+  {
+    id: "29",
+    youtubeId: "T96KPrqQoWc",
+    title: "PAPPA CAN'T PREACH",
+    artist: "MADONNA",
+    startAt: 0,
+    emojis: "👨‍👧💍👗🚫"
+  },
+  {
+    id: "30",
+    youtubeId: "o969f635661",
+    title: "TERE BIN",
+    artist: "ATIF ASLAM",
+    startAt: 0,
+    emojis: "💔🌧️🎸🕊️"
   }
 ];

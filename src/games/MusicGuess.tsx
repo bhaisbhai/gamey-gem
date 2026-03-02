@@ -18,6 +18,8 @@ const getDailySeed = () => {
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 };
 
+const START_DATE = new Date('2026-02-27T00:00:00Z').getTime();
+
 const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const [gameState, setGameState] = useState<'playing' | 'result'>('playing');
   const [attempts, setAttempts] = useState<string[]>([]);
@@ -34,8 +36,19 @@ const MusicGuess: React.FC<MusicGuessProps> = ({ onBack }) => {
   const intervalRef = useRef<any>(null);
   
   const daySeed = getDailySeed();
-  const dateNum = parseInt(daySeed.replace(/-/g, ''));
-  const songIndex = dateNum % DAILY_SONGS.length;
+  
+  // Calculate day number since launch
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayNumber = Math.floor((today - START_DATE) / (24 * 60 * 60 * 1000));
+  
+  // Deterministic but non-sequential shuffle-like pick
+  // Using a simple hash to make the order feel random but fixed
+  const getIndex = (day: number, total: number) => {
+    return (day * 13 + 7) % total;
+  };
+  
+  const songIndex = getIndex(dayNumber, DAILY_SONGS.length);
   const song = DAILY_SONGS[songIndex];
 
   useEffect(() => {
